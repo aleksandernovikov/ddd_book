@@ -58,3 +58,43 @@ def determine_actions(source_hashes, dest_hashes, source_folder, dest_folder):
     for sha, filename in dest_hashes.items():
         if sha not in source_hashes:
             yield "DELETE", dest_folder / filename
+
+
+def determine_actions2(reader, filesystem, source_root, dest_root):
+    source_hashes = reader(source_root)
+    dest_hashes = reader(dest_root)
+
+    source_root = Path(source_root)
+    dest_root = Path(dest_root)
+
+    for sha, filename in source_hashes.items():
+        file_exists_in_dest = sha in dest_hashes
+        filenames_match = dest_hashes.get(sha) == filename
+
+        match (file_exists_in_dest, filenames_match):
+            case (False, _):
+                # Файл отсутствует в dest, копируем его
+                source_path = source_root / filename
+                dest_path = dest_root / filename
+                filesystem.copy(source_path, dest_path)
+
+            case (True, False):
+                # Файл есть в dest, но с другим именем, перемещаем его
+                old_dest_path = dest_root / dest_hashes[sha]
+                new_dest_path = dest_root / filename
+                filesystem.move(old_dest_path, new_dest_path)
+
+    for sha, filename in dest_hashes.items():
+        if sha not in source_hashes:
+            filesystem.delete(dest_root / filename)
+
+
+class FakeFileSystem(list):
+    def copy(self, src, dest):
+        self.append(('COPY', src, dest))
+
+    def move(self, src, dest):
+        self.append(('MOVE', src, dest))
+
+    def delete(self, dest):
+        self.append(('DELETE', dest))
